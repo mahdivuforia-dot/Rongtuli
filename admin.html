@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Admin — Product Manager</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto; background:#f4f5f7; margin:0; color:#111; }
+    h2,h3 { margin:0; }
+    .container { max-width:1100px; margin:20px auto; padding:0 16px; }
+    button { cursor:pointer; border:0; border-radius:6px; padding:8px 14px; background:#1f7edf; color:#fff; font-weight:600; }
+    button:hover { background:#145bb5; }
+    input, textarea { width:100%; padding:8px; margin:6px 0; border-radius:6px; border:1px solid #ccc; font-size:14px; }
+    textarea { resize: vertical; }
+    .auth, .admin { background:#fff; padding:20px; border-radius:12px; box-shadow:0 6px 20px rgba(0,0,0,0.08); margin-bottom:20px; }
+    .flex { display:flex; gap:12px; align-items:center; }
+    .flex-between { display:flex; justify-content:space-between; align-items:center; }
+    .products-list .product { background:#fff; border-radius:10px; padding:12px; margin-bottom:12px; box-shadow:0 4px 16px rgba(0,0,0,0.06); }
+    .product img { height:60px; width:60px; object-fit:cover; border-radius:6px; margin-right:8px; }
+    .product-info { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+    .product-actions button { background:#28a745; }
+    .product-actions button.delete { background:#dc3545; }
+    .product-actions button.edit { background:#f59e0b; }
+    .msg { margin-top:8px; font-weight:600; }
+    .msg.error { color:#dc3545; }
+    .msg.success { color:#28a745; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Admin — Product Manager</h2>
+
+    <!-- AUTH -->
+    <div class="auth" id="auth-section">
+      <h3>Sign in / Sign up (admin)</h3>
+      <div class="flex" id="auth-forms">
+        <input id="email" placeholder="Admin email" />
+        <input id="password" placeholder="Password" type="password" />
+        <button id="btn-signup">Sign up</button>
+        <button id="btn-signin">Sign in</button>
+      </div>
+      <div id="auth-msg" class="msg error"></div>
+    </div>
+
+    <!-- ADMIN PANEL -->
+    <div class="admin" id="admin-panel" style="display:none;">
+      <div class="flex-between">
+        <h3>Create Product</h3>
+        <button id="btn-logout">Logout</button>
+      </div>
+
+      <div id="create-area">
+        <input id="p-name" placeholder="Product name" />
+        <input id="p-sku" placeholder="SKU (optional)" />
+        <textarea id="p-desc" placeholder="Description"></textarea>
+        <input id="p-price" placeholder="Price (e.g., 45.00)" />
+        <input id="p-stock" placeholder="Stock (integer)" />
+        <input type="file" id="img1" accept="image/*" />
+        <button id="btn-create-product">Create Product</button>
+        <div id="create-msg" class="msg success"></div>
+      </div>
+
+      <h3 style="margin-top:20px;">Products (edit/delete)</h3>
+      <div id="products-list" class="products-list">Loading...</div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
+
+    const SUPABASE_URL = 'https://qhslurjvanppitwuuxtv.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFoc2x1cmp2YW5wcGl0d3V1eHR2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA5NTg0MjEsImV4cCI6MjA3NjUzNDQyMX0.8PNOewgJFDGVVIDdiEbdFE2x9Yzv29o2kdAANqaW1gA';
+    const BUCKET_NAME = 'product-images';
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const authSection = document.getElementById('auth-section');
+    const adminPanel = document.getElementById('admin-panel');
+    const authMsg = document.getElementById('auth-msg');
+    const createMsg = document.getElementById('create-msg');
+    const productsList = document.getElementById('products-list');
+
+    async function checkSessionAndShow() {
+      const { data } = await supabase.auth.getSession();
+      if (data?.session) {
+        authSection.style.display = 'none';
+        adminPanel.style.display = 'block';
+        loadProducts();
+      } else {
+        authSection.style.display = 'block';
+        adminPanel.style.display = 'none';
+      }
+    }
+    (async()=>{ await checkSessionAndShow(); })();
+
+    document.getElementById('btn-signup').addEventListener('click', async () => {
+      authMsg.textContent = '';
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      if (!email || !password) { authMsg.textContent='Enter email & password'; return; }
+      const { data, error } = await supabase.auth.signUp({ email, password });
+      if (error) authMsg.textContent='Signup error: '+error.message;
+      else { authMsg.style.color='green'; authMsg.textContent='Signup success. Sign in.'; }
+    });
+
+    document.getElementById('btn-signin').addEventListener('click', async () => {
+      authMsg.textContent = '';
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      if (!email || !password) { authMsg.textContent='Enter email & password'; return; }
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) { authMsg.textContent='Sign in error: '+error.message; return; }
+      await checkSessionAndShow();
+    });
+
+    document.getElementById('btn-logout').addEventListener('click', async () => {
+      await supabase.auth.signOut();
+      authSection.style.display='block';
+      adminPanel.style.display='none';
+    });
+
+    document.getElementById('btn-create-product').addEventListener('click', async () => {
+      createMsg.textContent=''; createMsg.className='msg';
+      const name = document.getElementById('p-name').value.trim();
+      const sku = document.getElementById('p-sku').value.trim();
+      const desc = document.getElementById('p-desc').value.trim();
+      const price = parseFloat(document.getElementById('p-price').value) || 0;
+      const stock = parseInt(document.getElementById('p-stock').value) || 0;
+      if(!name){ createMsg.classList.add('error'); createMsg.textContent='Product name required'; return; }
+
+      const file = document.getElementById('img1').files[0];
+      let publicUrl = '';
+      if(file){
+        try{
+          const filename = `${Date.now()}_${file.name.replace(/\s+/g,'_')}`;
+          const path = filename;
+          const { data: uploadData, error: uploadError } = await supabase.storage.from(BUCKET_NAME).upload(path, file, { cacheControl:'3600', upsert:false });
+          if(uploadError){ createMsg.classList.add('error'); createMsg.textContent='Upload error: '+uploadError.message; return; }
+          const { data: urlData } = supabase.storage.from(BUCKET_NAME).getPublicUrl(path);
+          publicUrl = urlData?.publicUrl || urlData?.publicURL || '';
+        } catch(err){ createMsg.classList.add('error'); createMsg.textContent='Upload exception: '+err.message; return; }
+      }
+
+      const { data: insertData, error: insertError } = await supabase.from('products').insert([{
+        sku, name, description:desc, price, stock, image_urls: publicUrl? [publicUrl]: []
+      }]);
+      if(insertError){ createMsg.classList.add('error'); createMsg.textContent='DB insert error: '+insertError.message; return; }
+
+      createMsg.classList.add('success'); createMsg.textContent='Product created successfully';
+      document.getElementById('p-name').value='';
+      document.getElementById('p-sku').value='';
+      document.getElementById('p-desc').value='';
+      document.getElementById('p-price').value='';
+      document.getElementById('p-stock').value='';
+      document.getElementById('img1').value='';
+      await loadProducts();
+    });
+
+    async function loadProducts() {
+      productsList.textContent='Loading...';
+      const { data, error } = await supabase.from('products').select('*').order('created_at',{ ascending:false });
+      if(error){ productsList.textContent='Error: '+error.message; return; }
+      if(!data || data.length===0){ productsList.textContent='No products yet.'; return; }
+
+      productsList.innerHTML='';
+      data.forEach(p=>{
+        const container = document.createElement('div');
+        container.className='product';
+        container.innerHTML=`
+          <div class="product-info">
+            ${p.image_urls && p.image_urls[0]? `<img src="${p.image_urls[0]}" />`:''}
+            <div>
+              <strong>${escapeHtml(p.name)}</strong> (ID: ${p.id})<br/>
+              SKU: ${escapeHtml(p.sku||'')} — Price: ${p.price || 0}<br/>
+              Stock: <input data-id="${p.id}" class="stock-input" value="${p.stock || 0}" style="width:80px" />
+            </div>
+          </div>
+          <div class="flex product-actions" style="margin-top:6px;">
+            <button class="save-stock" data-id="${p.id}">Save Stock</button>
+            <button class="edit-prod" data-id="${p.id}">Edit</button>
+            <button class="delete-prod" data-id="${p.id}">Delete</button>
+          </div>
+          <div style="font-size:12px;color:#666;margin-top:6px">Created: ${p.created_at}</div>
+        `;
+        productsList.appendChild(container);
+      });
+
+      document.querySelectorAll('.save-stock').forEach(btn=>{
+        btn.addEventListener('click', async ()=>{
+          const id=parseInt(btn.dataset.id);
+          const input=document.querySelector(`.stock-input[data-id="${id}"]`);
+          const newStock=parseInt(input.value)||0;
+          const { error } = await supabase.from('products').update({ stock:newStock }).eq('id',id);
+          if(error) alert('Update error: '+error.message); else { alert('Stock updated'); await loadProducts(); }
+        });
+      });
+
+      document.querySelectorAll('.delete-prod').forEach(btn=>{
+        btn.addEventListener('click', async ()=>{
+          if(!confirm('Delete this product?')) return;
+          const id=parseInt(btn.dataset.id);
+          const { error } = await supabase.from('products').delete().eq('id',id);
+          if(error) alert('Delete error: '+error.message); else { alert('Deleted'); await loadProducts(); }
+        });
+      });
+
+      document.querySelectorAll('.edit-prod').forEach(btn=>{
+        btn.addEventListener('click', async ()=>{
+          const id=parseInt(btn.dataset.id);
+          const row = (await supabase.from('products').select('*').eq('id',id).single()).data;
+          if(!row){ alert('Product not found'); return; }
+          const newName = prompt('Product name:',row.name)||row.name;
+          const newPrice = parseFloat(prompt('Price:',row.price)||row.price)||0;
+          const newDesc = prompt('Description:',row.description||'')||'';
+          const { error } = await supabase.from('products').update({ name:newName, price:newPrice, description:newDesc }).eq('id',id);
+          if(error) alert('Update error: '+error.message); else { alert('Updated'); await loadProducts(); }
+        });
+      });
+    }
+
+    function escapeHtml(str){ if(!str)return''; return str.replace(/[&<>"'`=\/]/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','`':'&#x60;','=':'&#x3D;','/':'&#x2F;'}[s])); }
+  </script>
+</body>
+</html>
